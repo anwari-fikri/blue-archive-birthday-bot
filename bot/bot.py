@@ -16,7 +16,7 @@ class BlueArchiveBirthdayBot(commands.Bot):
             command_prefix=">> ", intents=discord.Intents().all(), activity=activity
         )
 
-        self.cogslist = ["cogs.General"]
+        self.cogslist = ["cogs.General", "cogs.Birthday"]
 
     async def setup_hook(self):
         for ext in self.cogslist:
