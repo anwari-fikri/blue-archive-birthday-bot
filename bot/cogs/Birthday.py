@@ -81,7 +81,8 @@ class Birthday(commands.Cog):
         embed.set_author(name="HAPPY BIRTHDAY! 🎊🥳🎉")
         embed.set_image(url=birthday_data["image_url"])
 
-        await channel.send(embed=embed)
+        message = await channel.send(embed=embed) 
+        await message.add_reaction("❤️")
 
     # async def 
 
