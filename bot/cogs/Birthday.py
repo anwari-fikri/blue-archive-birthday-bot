@@ -63,7 +63,7 @@ class Birthday(commands.Cog):
 
     @app_commands.command(
         name="get_today_birthday",
-        description="Learn about Blue Archive Birthday Bot commands",
+        description="Retrieve today's special birthdays",
     )
     async def get_today_birthday(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -80,6 +80,49 @@ class Birthday(commands.Cog):
             await followup.delete()
         else:
             await followup.edit(content=f"It is no one's birthday today 😭 ({today})")
+
+    @app_commands.command(
+        name="get_closest_birthday", description="Retrieve the next birthday date"
+    )
+    async def get_closest_birthday(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        followup = await interaction.followup.send(
+            "Retrieving closest next birthday..."
+        )
+        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = df.drop_duplicates(subset=["Japanese reading"])
+
+        next_birthday_date = await self.get_closest_birthday_date(
+            df["Birthday"].to_list()
+        )
+        birthdays = await self.scrape_birthday_date(next_birthday_date)
+        for birthday_data in birthdays:
+            await self.send_embed(
+                channel=interaction.channel,
+                birthday_data=birthday_data,
+                title="Next birthday...",
+                react=False,
+            )
+            await asyncio.sleep(0.5)
+        await followup.delete()
+
+    async def get_closest_birthday_date(self, dates_list):
+        current_date = datetime.datetime.today()
+
+        closest_birthday = min(
+            dates_list,
+            key=lambda birthday_str: (
+                (
+                    datetime.datetime.strptime(birthday_str, "%B %d").replace(
+                        year=current_date.year
+                    )
+                    - current_date
+                ).days
+                % 365
+            ),
+        )
+
+        return closest_birthday
 
     async def get_today_formatted(self):
         today = datetime.datetime.today()
@@ -119,18 +162,25 @@ class Birthday(commands.Cog):
 
         return f"https:{image_url}"
 
-    async def send_embed(self, channel: discord.TextChannel, birthday_data: dict):
+    async def send_embed(
+        self,
+        channel: discord.TextChannel,
+        birthday_data: dict,
+        title="HAPPY BIRTHDAY! 🎊🥳🎉",
+        react=True,
+    ):
         embed = discord.Embed(
             title=birthday_data["name"],
             url=birthday_data["url"],
             color=discord.Color.blue(),
         )
-        embed.set_author(name="HAPPY BIRTHDAY! 🎊🥳🎉")
+        embed.set_author(name=title)
         embed.set_image(url=birthday_data["image_url"])
         embed.set_footer(text=birthday_data["date"])
 
         message = await channel.send(embed=embed)
-        await message.add_reaction("❤️")
+        if react:
+            await message.add_reaction("❤️")
 
 
 async def setup(client: commands.Bot) -> None:
