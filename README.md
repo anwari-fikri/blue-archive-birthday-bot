@@ -10,4 +10,6 @@ Hello! The Blue Archive Birthday Bot announces students' birthdays. Here are the
 
 To use the bot, simply type one of the commands in the chat or command prompt. The bot will respond with the requested information.
 
+Data are retrieved from https://bluearchive.wiki/wiki/Characters_trivia_list
+
 Feel free to suggest additional commands if you have any ideas, or if you prefer, you can submit a pull request to add new functionality yourself.
