@@ -15,8 +15,26 @@ class General(commands.Cog):
 
         embed = discord.Embed(
             title="Blue Archive Birthday Bot Commands",
-            description="Hello!",
-            color=discord.Color.yellow(),
+            description="List of Commands:",
+            color=discord.Color.blue(),
+        )
+
+        embed.add_field(
+            name="/toggle_birthday_reminder",
+            value="Toggle birthday reminders on or off.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="/get_closest_birthday",
+            value="Get the upcoming closest birthday.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="/get_today_birthday",
+            value="Get the character birthday(s) today.",
+            inline=False,
         )
 
         await interaction.followup.send(embed=embed)
