@@ -126,7 +126,7 @@ class Birthday(commands.Cog):
 
     async def get_today_formatted(self):
         today = datetime.datetime.today()
-        today = today.strftime("%B %d")
+        today = today.strftime("%B%e")
 
         return today
 
