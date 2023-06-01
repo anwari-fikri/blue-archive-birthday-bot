@@ -51,21 +51,12 @@ class Birthday(commands.Cog):
             f"Retrieving **{student_name}**'s birthday..."
         )
 
-        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
-        df = df.drop_duplicates(subset=["Japanese reading"])
-
-        result = df[df["Japanese reading"] == student_name]
-        if result.empty:
+        birthday_data = await self.get_birthday_by_name(student_name)
+        if birthday_data is None:
             await followup.edit(
                 content=f"No character named **'{student_name}'**. Please try again."
             )
             return
-
-        name = result["Japanese reading"].values[0]
-        url = f"https://bluearchive.wiki/wiki/{result['Character'].values[0]}"
-        image = await self.scrape_character_image(url)
-        date = result["Birthday"].values[0]
-        birthday_data = {"name": name, "url": url, "image_url": image, "date": date}
 
         await self.send_embed(
             channel=interaction.channel,
@@ -74,6 +65,22 @@ class Birthday(commands.Cog):
             react=False,
         )
         await followup.delete()
+
+    async def get_birthday_by_name(self, student_name: str):
+        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = df.drop_duplicates(subset=["Japanese reading"])
+
+        result = df[df["Japanese reading"] == student_name]
+        if result.empty:
+            return None
+
+        name = result["Japanese reading"].values[0]
+        url = f"https://bluearchive.wiki/wiki/{result['Character'].values[0]}"
+        image = await self.scrape_character_image(url)
+        date = result["Birthday"].values[0]
+        birthday_data = {"name": name, "url": url, "image_url": image, "date": date}
+
+        return birthday_data
 
     @app_commands.command(
         name="toggle_birthday_reminder",
