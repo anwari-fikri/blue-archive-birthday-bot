@@ -1,6 +1,6 @@
 ## Blue Archive Birthday Bot
 
-[![discord](https://img.shields.io/badge/Invite-Blue_Archive_Birthday_Bot-blue?logo=discord&logoColor=white)]([https://discordapp.com/users/177131156028784640](https://discord.com/api/oauth2/authorize?client_id=1111574965981036604&permissions=2147485696&scope=bot))
+[![discord](https://img.shields.io/badge/Invite-Blue_Archive_Birthday_Bot-blue?logo=discord&logoColor=white)](https://discord.com/api/oauth2/authorize?client_id=1111574965981036604&permissions=2147485696&scope=bot)
 
 ### Preview
 
