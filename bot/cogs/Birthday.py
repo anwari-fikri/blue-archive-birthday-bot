@@ -31,6 +31,50 @@ class Birthday(commands.Cog):
         with open(CHANNEL, "w") as f:
             json.dump(self.set_channel, f)
 
+    async def find_birthday_by_name_autocomplete(self, _, current):
+        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = df.drop_duplicates(subset=["Japanese reading"])
+        choices = df.loc[
+            df["Japanese reading"].str.lower().str.contains(current.lower()),
+            "Japanese reading",
+        ].tolist()
+        return [app_commands.Choice(name=choice, value=choice) for choice in choices]
+
+    @app_commands.command(name="find_birthday_by_name")
+    @app_commands.autocomplete(choices=find_birthday_by_name_autocomplete)
+    async def find_birthday_by_name(
+        self, interaction: discord.Interaction, choices: str
+    ):
+        student_name = choices
+        await interaction.response.defer()
+        followup = await interaction.followup.send(
+            f"Retrieving **{student_name}**'s birthday..."
+        )
+
+        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = df.drop_duplicates(subset=["Japanese reading"])
+
+        result = df[df["Japanese reading"] == student_name]
+        if result.empty:
+            await followup.edit(
+                content=f"No character named **'{student_name}'**. Please try again."
+            )
+            return
+
+        name = result["Japanese reading"].values[0]
+        url = f"https://bluearchive.wiki/wiki/{result['Character'].values[0]}"
+        image = await self.scrape_character_image(url)
+        date = result["Birthday"].values[0]
+        birthday_data = {"name": name, "url": url, "image_url": image, "date": date}
+
+        await self.send_embed(
+            channel=interaction.channel,
+            birthday_data=birthday_data,
+            title="Birthday for...",
+            react=False,
+        )
+        await followup.delete()
+
     @app_commands.command(
         name="toggle_birthday_reminder",
         description="Enable/Disable birthday reminder on this channel",
