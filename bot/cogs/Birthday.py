@@ -83,6 +83,24 @@ class Birthday(commands.Cog):
         return birthday_data
 
     @app_commands.command(
+        name="list_channel_id_toggle",
+        description="List out all channel id that is subscribed to toggle_birthday_reminder",
+    )
+    async def list_channel_id_toggle(self, interaction: discord.Interaction):
+        try:
+            with open(CHANNEL, "r") as f:
+                channel_list = json.load(f)
+            # Convert the list to a string for proper content parameter.
+            content = "\n".join(str(channel_id) for channel_id in channel_list)
+            await interaction.response.send_message(
+                content=content
+            )
+        except FileNotFoundError:
+            await interaction.response.send_message(
+                content="No channels are subscribed to toggle_birthday_reminder."
+            )
+
+    @app_commands.command(
         name="toggle_birthday_reminder",
         description="Enable/Disable birthday reminder on this channel",
     )
@@ -97,6 +115,9 @@ class Birthday(commands.Cog):
             await interaction.response.send_message(
                 content=f"Birthday Reminder is now **DISABLED** on #{interaction.channel}"
             )
+
+        with open(CHANNEL, "w") as f:
+            json.dump(self.set_channel, f)
 
     @tasks.loop(time=time)
     async def scheduled_birthday_reminder(self):
