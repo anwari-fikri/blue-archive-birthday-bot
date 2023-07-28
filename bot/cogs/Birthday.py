@@ -1,6 +1,5 @@
 import asyncio
 import requests
-from bs4 import BeautifulSoup
 import datetime
 
 # from datetime import datetime, timedelta
