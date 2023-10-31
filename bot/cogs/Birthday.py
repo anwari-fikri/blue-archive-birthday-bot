@@ -163,9 +163,10 @@ class Birthday(commands.Cog):
         )
         df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
         df = df.drop_duplicates(subset=["Japanese reading"])
-
+        
+        birthday_dates = [date_str for date_str in df["Birthday"].to_list() if date_str != "-"]
         next_birthday_date = await self.get_closest_birthday_date(
-            df["Birthday"].to_list()
+            birthday_dates
         )
         birthdays = await self.scrape_birthday_date(next_birthday_date)
         for birthday_data in birthdays:
