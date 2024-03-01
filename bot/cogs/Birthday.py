@@ -2,6 +2,7 @@ import asyncio
 import requests
 from bs4 import BeautifulSoup
 import datetime
+import os
 
 # from datetime import datetime, timedelta
 import discord
@@ -10,6 +11,7 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import json
 
+DIRECTORY = './data'
 CHANNEL = "./data/set_channel.json"
 
 utc = datetime.timezone.utc
@@ -23,6 +25,8 @@ class Birthday(commands.Cog):
             with open(CHANNEL, "r") as f:
                 self.set_channel = json.load(f)
         except FileNotFoundError:
+            if not os.path.exists(DIRECTORY):
+                os.makedirs(DIRECTORY)
             self.set_channel = []
 
         self.scheduled_birthday_reminder.start()
@@ -32,7 +36,8 @@ class Birthday(commands.Cog):
             json.dump(self.set_channel, f)
 
     async def find_birthday_by_name_autocomplete(self, _, current):
-        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = pd.read_html(
+            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
         df = df.drop_duplicates(subset=["Japanese reading"])
         choices = df.loc[
             df["Japanese reading"].str.lower().str.contains(current.lower()),
@@ -67,7 +72,8 @@ class Birthday(commands.Cog):
         await followup.delete()
 
     async def get_birthday_by_name(self, student_name: str):
-        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = pd.read_html(
+            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
         df = df.drop_duplicates(subset=["Japanese reading"])
 
         result = df[df["Japanese reading"] == student_name]
@@ -78,7 +84,8 @@ class Birthday(commands.Cog):
         url = f"https://bluearchive.wiki/wiki/{result['Character'].values[0]}"
         image = await self.scrape_character_image(url)
         date = result["Birthday"].values[0]
-        birthday_data = {"name": name, "url": url, "image_url": image, "date": date}
+        birthday_data = {"name": name, "url": url,
+                         "image_url": image, "date": date}
 
         return birthday_data
 
@@ -86,12 +93,17 @@ class Birthday(commands.Cog):
         name="list_channel_id_toggle",
         description="List out all channel id that is subscribed to toggle_birthday_reminder",
     )
+    @commands.is_owner()
     async def list_channel_id_toggle(self, interaction: discord.Interaction):
         try:
             with open(CHANNEL, "r") as f:
                 channel_list = json.load(f)
             # Convert the list to a string for proper content parameter.
             content = "\n".join(str(channel_id) for channel_id in channel_list)
+            if content == "":
+                await interaction.response.send_message(content="No one is using this bot :(")
+                return
+
             await interaction.response.send_message(
                 content=content
             )
@@ -161,10 +173,12 @@ class Birthday(commands.Cog):
         followup = await interaction.followup.send(
             "Retrieving closest next birthday..."
         )
-        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = pd.read_html(
+            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
         df = df.drop_duplicates(subset=["Japanese reading"])
-        
-        birthday_dates = [date_str for date_str in df["Birthday"].to_list() if date_str != "-"]
+
+        birthday_dates = [
+            date_str for date_str in df["Birthday"].to_list() if date_str != "-"]
         next_birthday_date = await self.get_closest_birthday_date(
             birthday_dates
         )
@@ -204,7 +218,8 @@ class Birthday(commands.Cog):
         return today
 
     async def scrape_birthday_date(self, date: str):
-        df = pd.read_html("https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
+        df = pd.read_html(
+            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
         df = df.drop_duplicates(subset=["Japanese reading"])
 
         results = df[df["Birthday"] == date]
@@ -219,7 +234,8 @@ class Birthday(commands.Cog):
             image = await self.scrape_character_image(url)
             date = result["Birthday"]
 
-            birthday_data = {"name": name, "url": url, "image_url": image, "date": date}
+            birthday_data = {"name": name, "url": url,
+                             "image_url": image, "date": date}
 
             birthdays.append(birthday_data)
 
