@@ -10,6 +10,8 @@ import pandas as pd
 from discord.ext import commands, tasks
 from discord import app_commands
 import json
+import logging
+log = logging.getLogger(__name__)
 
 DIRECTORY = './data'
 CHANNEL = "./data/set_channel.json"
@@ -135,15 +137,19 @@ class Birthday(commands.Cog):
     async def scheduled_birthday_reminder(self):
         if self.set_channel != []:
             for channel_id in self.set_channel:
-                channel = await self.client.fetch_channel(channel_id)
-                today = await self.get_today_formatted()
-                birthdays = await self.scrape_birthday_date(today)
-                if birthdays != None:
-                    for birthday_data in birthdays:
-                        await self.send_embed(
-                            channel=channel, birthday_data=birthday_data
-                        )
-                        await asyncio.sleep(0.5)
+                try:
+                    channel = await self.client.fetch_channel(channel_id)
+                    today = await self.get_today_formatted()
+                    birthdays = await self.scrape_birthday_date(today)
+                    if birthdays != None:
+                        for birthday_data in birthdays:
+                            await self.send_embed(
+                                channel=channel, birthday_data=birthday_data
+                            )
+                            await asyncio.sleep(0.5)
+                except Exception as e:
+                    log.error(f"An error occurred: {e}")
+                    log.error("Probably channel permission not granted")
 
     @app_commands.command(
         name="get_today_birthday",
