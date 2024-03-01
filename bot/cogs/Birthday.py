@@ -149,7 +149,8 @@ class Birthday(commands.Cog):
                             await asyncio.sleep(0.5)
                 except Exception as e:
                     log.error(f"An error occurred: {e}")
-                    log.error("Probably channel permission not granted")
+                    log.error(
+                        f"Channel permission not granted in: [{channel_id}]")
 
     @app_commands.command(
         name="get_today_birthday",
