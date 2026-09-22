@@ -1,5 +1,5 @@
 import asyncio
-import requests
+import io
 from bs4 import BeautifulSoup
 import datetime
 import os
@@ -9,12 +9,23 @@ import discord
 import pandas as pd
 from discord.ext import commands, tasks
 from discord import app_commands
+from playwright.async_api import async_playwright
 import json
 import logging
 log = logging.getLogger(__name__)
 
 DIRECTORY = './data'
 CHANNEL = "./data/set_channel.json"
+TRIVIA_URL = "https://bluearchive.wiki/wiki/Characters_trivia_list"
+
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+)
+
+# The trivia table rarely changes; re-scraping it on every single command (and on every
+# autocomplete keystroke) is slow and makes it more likely we get rate-limited/blocked.
+TRIVIA_CACHE_TTL = datetime.timedelta(hours=6)
 
 utc = datetime.timezone.utc
 time = datetime.time(hour=0, minute=0, tzinfo=utc)
@@ -23,6 +34,17 @@ time = datetime.time(hour=0, minute=0, tzinfo=utc)
 class Birthday(commands.Cog):
     def __init__(self, client: commands.Bot):
         self.client = client
+        self._trivia_df = None
+        self._trivia_fetched_at = None
+
+        # bluearchive.wiki's CDN 403s plain HTTP clients (tried a browser User-Agent,
+        # tried cloudscraper, still blocked), so we drive an actual headless browser
+        # instead. One browser instance is kept alive for the cog's lifetime rather
+        # than launching one per request, launching is the slow part (~1-2s).
+        self._playwright = None
+        self._browser = None
+        self._browser_lock = asyncio.Lock()
+
         try:
             with open(CHANNEL, "r") as f:
                 self.set_channel = json.load(f)
@@ -32,20 +54,71 @@ class Birthday(commands.Cog):
             self.set_channel = []
 
         self.scheduled_birthday_reminder.start()
+        # Warm the trivia cache once at startup so the first real interaction
+        # (especially autocomplete, which only gets ~3s to respond) doesn't have
+        # to pay for a browser launch + page load itself. Cog.__init__ runs inside
+        # a running event loop (via setup_hook -> load_extension), so we can just
+        # schedule this on it directly rather than going through client.loop, which
+        # isn't guaranteed to be set up yet depending on when the cog is loaded.
+        asyncio.create_task(self._warmup())
 
-    def cog_unload(self):
+    async def cog_unload(self):
         with open(CHANNEL, "w") as f:
             json.dump(self.set_channel, f)
+        if self._browser is not None:
+            await self._browser.close()
+        if self._playwright is not None:
+            await self._playwright.stop()
+
+    async def _warmup(self):
+        await self.client.wait_until_ready()
+        try:
+            await self.get_trivia_df()
+            log.info("Trivia table cache warmed up.")
+        except Exception as e:
+            log.error(f"Failed to warm up trivia cache on startup: {e}")
+
+    async def _get_browser(self):
+        async with self._browser_lock:
+            if self._browser is None:
+                self._playwright = await async_playwright().start()
+                self._browser = await self._playwright.chromium.launch(headless=True)
+        return self._browser
+
+    async def _fetch_html(self, url: str) -> str:
+        browser = await self._get_browser()
+        page = await browser.new_page(user_agent=BROWSER_USER_AGENT)
+        try:
+            await page.goto(url, wait_until="networkidle", timeout=30000)
+            return await page.content()
+        finally:
+            await page.close()
+
+    async def get_trivia_df(self, force_refresh: bool = False) -> pd.DataFrame:
+        """Fetch the character trivia table, using a short-lived cache so we don't
+        hit the wiki (and spin up a browser page) on every command invocation /
+        autocomplete keystroke."""
+        now = datetime.datetime.now(utc)
+        is_stale = (
+            self._trivia_df is None
+            or self._trivia_fetched_at is None
+            or now - self._trivia_fetched_at > TRIVIA_CACHE_TTL
+        )
+        if force_refresh or is_stale:
+            html = await self._fetch_html(TRIVIA_URL)
+            df = pd.read_html(io.StringIO(html))[0]
+            df = df.drop_duplicates(subset=["Japanese reading"])
+            self._trivia_df = df
+            self._trivia_fetched_at = now
+        return self._trivia_df
 
     async def find_birthday_by_name_autocomplete(self, _, current):
-        df = pd.read_html(
-            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
-        df = df.drop_duplicates(subset=["Japanese reading"])
+        df = await self.get_trivia_df()
         choices = df.loc[
             df["Japanese reading"].str.lower().str.contains(current.lower()),
             "Japanese reading",
         ].tolist()
-        return [app_commands.Choice(name=choice, value=choice) for choice in choices]
+        return [app_commands.Choice(name=choice, value=choice) for choice in choices][:25]
 
     @app_commands.command(name="find_birthday_by_name")
     @app_commands.autocomplete(choices=find_birthday_by_name_autocomplete)
@@ -74,9 +147,7 @@ class Birthday(commands.Cog):
         await followup.delete()
 
     async def get_birthday_by_name(self, student_name: str):
-        df = pd.read_html(
-            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
-        df = df.drop_duplicates(subset=["Japanese reading"])
+        df = await self.get_trivia_df()
 
         result = df[df["Japanese reading"] == student_name]
         if result.empty:
@@ -109,7 +180,7 @@ class Birthday(commands.Cog):
             await interaction.response.send_message(
                 content=content
             )
-        except FileNotFoundError:
+        except (FileNotFoundError, json.JSONDecodeError):
             await interaction.response.send_message(
                 content="No channels are subscribed to toggle_birthday_reminder."
             )
@@ -152,6 +223,10 @@ class Birthday(commands.Cog):
                     log.error(
                         f"Channel permission not granted in: [{channel_id}]")
 
+    @scheduled_birthday_reminder.before_loop
+    async def before_scheduled_birthday_reminder(self):
+        await self.client.wait_until_ready()
+
     @app_commands.command(
         name="get_today_birthday",
         description="Retrieve today's special birthdays",
@@ -180,9 +255,7 @@ class Birthday(commands.Cog):
         followup = await interaction.followup.send(
             "Retrieving closest next birthday..."
         )
-        df = pd.read_html(
-            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
-        df = df.drop_duplicates(subset=["Japanese reading"])
+        df = await self.get_trivia_df()
 
         birthday_dates = [
             date_str for date_str in df["Birthday"].to_list() if date_str != "-"]
@@ -225,9 +298,7 @@ class Birthday(commands.Cog):
         return today
 
     async def scrape_birthday_date(self, date: str):
-        df = pd.read_html(
-            "https://bluearchive.wiki/wiki/Characters_trivia_list")[0]
-        df = df.drop_duplicates(subset=["Japanese reading"])
+        df = await self.get_trivia_df()
 
         results = df[df["Birthday"] == date]
         if results.empty:
@@ -249,9 +320,8 @@ class Birthday(commands.Cog):
         return birthdays
 
     async def scrape_character_image(self, url: str):
-        response = requests.get(url)
-
-        soup = BeautifulSoup(response.content, "html.parser")
+        html = await self._fetch_html(url)
+        soup = BeautifulSoup(html, "html.parser")
         character_images_div = soup.find("div", class_="character-images")
         image_element = character_images_div.find("img")
         image_url = image_element["src"]

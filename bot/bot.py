@@ -17,10 +17,16 @@ class BlueArchiveBirthdayBot(commands.Bot):
         )
 
         self.cogslist = ["cogs.General", "cogs.Birthday"]
+        self.synced_command_count = 0
 
     async def setup_hook(self):
         for ext in self.cogslist:
             await self.load_extension(ext)
+
+        # Sync here (once, at startup) rather than in on_ready, which fires again on
+        # every reconnect and would re-sync slash commands every time, risking rate limits.
+        synced = await self.tree.sync()
+        self.synced_command_count = len(synced)
 
     async def on_ready(self):
         prefix = (
@@ -38,20 +44,22 @@ class BlueArchiveBirthdayBot(commands.Bot):
         print(
             prefix + " Python Version " + Fore.YELLOW + str(platform.python_version())
         )
-        synced = await self.tree.sync()
         print(
             prefix
             + " Slash CMDs Synced "
             + Fore.YELLOW
-            + str(len(synced))
+            + str(self.synced_command_count)
             + " Commands"
         )
 
 
 def main():
     TOKEN = os.getenv("TOKEN")
-    intents = discord.Intents.default()
-    intents.message_content = True
+    if not TOKEN:
+        raise RuntimeError(
+            "No TOKEN found. Create a .env file with TOKEN=<your bot token> "
+            "(see README) before running the bot."
+        )
     client = BlueArchiveBirthdayBot()
     client.run(TOKEN)
 

@@ -20,6 +20,38 @@ The Blue Archive Birthday Bot announces students' birthdays. Here are the availa
 
 To use the bot, simply type one of the commands in the chat or command prompt. The bot will respond with the requested information.
 
-Data are retrieved from https://bluearchive.wiki/wiki/Characters_trivia_list
+Data are retrieved from https://bluearchive.wiki/wiki/Characters_trivia_list. The wiki blocks plain HTTP requests, so the bot drives a real headless Chromium browser (via [Playwright](https://playwright.dev/python/)) to fetch pages, rather than a simple HTTP client.
+
+### Running it yourself
+
+Requirements: Python 3.10+ (tested on 3.14).
+
+```
+git clone https://github.com/anwari-fikri/blue-archive-birthday-bot.git
+cd blue-archive-birthday-bot
+python -m venv venv
+```
+
+Activate the virtual environment:
+- Windows (PowerShell): `.\venv\Scripts\Activate.ps1`
+- macOS/Linux: `source venv/bin/activate`
+
+Install dependencies and the headless browser Playwright needs:
+```
+pip install -r requirements.txt
+playwright install chromium
+```
+
+Create a `.env` file inside the `bot/` folder with your bot's token:
+```
+TOKEN=your_bot_token_here
+```
+Get a token from the [Discord Developer Portal](https://discord.com/developers/applications) (Applications → your app → Bot). Under the Bot page, make sure **Message Content Intent** is enabled, the bot won't start without it.
+
+Run the bot:
+```
+cd bot
+python bot.py
+```
 
 Feel free to suggest additional commands if you have any ideas, or if you prefer, you can submit a pull request to add new functionality yourself.
