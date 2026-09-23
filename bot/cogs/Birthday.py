@@ -1,8 +1,9 @@
 import asyncio
 import io
+import json
+import os
 from bs4 import BeautifulSoup
 import datetime
-import os
 
 # from datetime import datetime, timedelta
 import discord
@@ -10,13 +11,72 @@ import pandas as pd
 from discord.ext import commands, tasks
 from discord import app_commands
 from playwright.async_api import async_playwright
-import json
 import logging
+
+# bot.py runs from the bot/ folder, which is what ends up on sys.path (same reason
+# "cogs.Birthday" resolves), so this is a plain top-level import, not a relative one.
+import notion_client
+
 log = logging.getLogger(__name__)
 
 DIRECTORY = './data'
 CHANNEL = "./data/set_channel.json"
 TRIVIA_URL = "https://bluearchive.wiki/wiki/Characters_trivia_list"
+
+
+class JsonChannelStore:
+    """Original local-file storage for which channels have reminders enabled.
+    Used when Notion isn't configured (see NotionChannelStore below)."""
+
+    def __init__(self):
+        self._channels: list[int] = []
+
+    async def load(self) -> list[int]:
+        try:
+            with open(CHANNEL, "r") as f:
+                self._channels = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            if not os.path.exists(DIRECTORY):
+                os.makedirs(DIRECTORY)
+            self._channels = []
+        return list(self._channels)
+
+    async def add(self, channel_id: int) -> None:
+        self._channels.append(channel_id)
+        self._save()
+
+    async def remove(self, channel_id: int) -> None:
+        if channel_id in self._channels:
+            self._channels.remove(channel_id)
+        self._save()
+
+    def _save(self) -> None:
+        if not os.path.exists(DIRECTORY):
+            os.makedirs(DIRECTORY)
+        with open(CHANNEL, "w") as f:
+            json.dump(self._channels, f)
+
+
+class NotionChannelStore:
+    """Stores which channels have reminders enabled as pages in a Notion
+    database instead of the local JSON file. See bot/notion_client.py."""
+
+    def __init__(self):
+        self._pages: dict[int, str] = {}  # channel_id -> Notion page id
+
+    async def load(self) -> list[int]:
+        self._pages = await notion_client.list_subscribed_channels()
+        return list(self._pages.keys())
+
+    async def add(self, channel_id: int) -> None:
+        page_id = await notion_client.add_subscribed_channel(channel_id)
+        self._pages[channel_id] = page_id
+
+    async def remove(self, channel_id: int) -> None:
+        page_id = self._pages.pop(channel_id, None)
+        if page_id:
+            await notion_client.remove_subscribed_channel(page_id)
+
 
 BROWSER_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -45,13 +105,22 @@ class Birthday(commands.Cog):
         self._browser = None
         self._browser_lock = asyncio.Lock()
 
-        try:
-            with open(CHANNEL, "r") as f:
-                self.set_channel = json.load(f)
-        except FileNotFoundError:
-            if not os.path.exists(DIRECTORY):
-                os.makedirs(DIRECTORY)
-            self.set_channel = []
+        # Which channels have birthday reminders enabled. Stored in Notion when
+        # NOTION_API_KEY / NOTION_DATABASE_ID_BIRTHDAY_CHANNELS are set, otherwise
+        # falls back to the local data/set_channel.json file. Either way, loaded
+        # once at startup by _warmup and kept in sync in memory on every toggle,
+        # so normal operation doesn't need a round trip per reminder tick.
+        if notion_client.is_configured():
+            self._store = NotionChannelStore()
+            log.info("Using Notion to store subscribed channels.")
+        else:
+            self._store = JsonChannelStore()
+            log.info(
+                "NOTION_API_KEY / NOTION_DATABASE_ID_BIRTHDAY_CHANNELS not set, "
+                "falling back to data/set_channel.json for subscribed channels."
+            )
+        self.set_channel: list[int] = []
+        self._channels_loaded = asyncio.Event()
 
         self.scheduled_birthday_reminder.start()
         # Warm the trivia cache once at startup so the first real interaction
@@ -63,8 +132,6 @@ class Birthday(commands.Cog):
         asyncio.create_task(self._warmup())
 
     async def cog_unload(self):
-        with open(CHANNEL, "w") as f:
-            json.dump(self.set_channel, f)
         if self._browser is not None:
             await self._browser.close()
         if self._playwright is not None:
@@ -72,6 +139,15 @@ class Birthday(commands.Cog):
 
     async def _warmup(self):
         await self.client.wait_until_ready()
+        try:
+            self.set_channel = await self._store.load()
+            log.info(f"Loaded {len(self.set_channel)} subscribed channel(s).")
+        except Exception as e:
+            log.error(f"Failed to load subscribed channels on startup: {e}")
+        finally:
+            # Set this even on failure, an empty list is a safe default (no
+            # reminders fire) and we don't want the reminder loop stuck waiting forever.
+            self._channels_loaded.set()
         try:
             await self.get_trivia_df()
             log.info("Trivia table cache warmed up.")
@@ -168,41 +244,38 @@ class Birthday(commands.Cog):
     )
     @commands.is_owner()
     async def list_channel_id_toggle(self, interaction: discord.Interaction):
-        try:
-            with open(CHANNEL, "r") as f:
-                channel_list = json.load(f)
-            # Convert the list to a string for proper content parameter.
-            content = "\n".join(str(channel_id) for channel_id in channel_list)
-            if content == "":
-                await interaction.response.send_message(content="No one is using this bot :(")
-                return
+        await self._channels_loaded.wait()
+        if not self.set_channel:
+            await interaction.response.send_message(content="No one is using this bot :(")
+            return
 
-            await interaction.response.send_message(
-                content=content
-            )
-        except (FileNotFoundError, json.JSONDecodeError):
-            await interaction.response.send_message(
-                content="No channels are subscribed to toggle_birthday_reminder."
-            )
+        content = "\n".join(str(channel_id) for channel_id in self.set_channel)
+        await interaction.response.send_message(content=content)
 
     @app_commands.command(
         name="toggle_birthday_reminder",
         description="Enable/Disable birthday reminder on this channel",
     )
     async def toggle_birthday_reminder(self, interaction: discord.Interaction):
-        if interaction.channel_id not in self.set_channel:
-            self.set_channel.append(interaction.channel_id)
+        await self._channels_loaded.wait()
+        try:
+            if interaction.channel_id not in self.set_channel:
+                await self._store.add(interaction.channel_id)
+                self.set_channel.append(interaction.channel_id)
+                await interaction.response.send_message(
+                    content=f"Birthday Reminder is now **ENABLED** on #{interaction.channel}"
+                )
+            else:
+                await self._store.remove(interaction.channel_id)
+                self.set_channel.remove(interaction.channel_id)
+                await interaction.response.send_message(
+                    content=f"Birthday Reminder is now **DISABLED** on #{interaction.channel}"
+                )
+        except Exception as e:
+            log.error(f"Failed to save subscribed channel: {e}")
             await interaction.response.send_message(
-                content=f"Birthday Reminder is now **ENABLED** on #{interaction.channel}"
+                content="Something went wrong saving that, please try again in a moment."
             )
-        elif interaction.channel_id in self.set_channel:
-            self.set_channel.remove(interaction.channel_id)
-            await interaction.response.send_message(
-                content=f"Birthday Reminder is now **DISABLED** on #{interaction.channel}"
-            )
-
-        with open(CHANNEL, "w") as f:
-            json.dump(self.set_channel, f)
 
     @tasks.loop(time=time)
     async def scheduled_birthday_reminder(self):
@@ -226,6 +299,7 @@ class Birthday(commands.Cog):
     @scheduled_birthday_reminder.before_loop
     async def before_scheduled_birthday_reminder(self):
         await self.client.wait_until_ready()
+        await self._channels_loaded.wait()
 
     @app_commands.command(
         name="get_today_birthday",

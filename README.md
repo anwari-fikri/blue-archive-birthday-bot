@@ -48,6 +48,22 @@ TOKEN=your_bot_token_here
 ```
 Get a token from the [Discord Developer Portal](https://discord.com/developers/applications) (Applications → your app → Bot). Under the Bot page, make sure **Message Content Intent** is enabled, the bot won't start without it.
 
+#### Optional: storing subscribed channels in Notion
+
+By default, the list of channels that have `/toggle_birthday_reminder` enabled is stored in a local file, `data/set_channel.json`. If you'd rather keep that list in a Notion database instead, add two more variables to the `.env` file:
+```
+NOTION_API_KEY=your_notion_integration_token
+NOTION_DATABASE_ID_BIRTHDAY_CHANNELS=your_notion_database_id
+```
+
+To set this up:
+1. Create an internal integration at [notion.so/my-integrations](https://www.notion.so/my-integrations) and copy its token, that's `NOTION_API_KEY`.
+2. Create a Notion database with exactly one property named `Channel ID`, of type Title.
+3. Share that database with the integration (`•••` menu on the database → Connections → add your integration).
+4. Copy the database ID from its URL (the 32-character id right after your workspace name and before the `?v=`), that's `NOTION_DATABASE_ID_BIRTHDAY_CHANNELS`.
+
+Both variables are optional. Leave them unset and the bot keeps using `data/set_channel.json` exactly as before.
+
 Run the bot:
 ```
 cd bot

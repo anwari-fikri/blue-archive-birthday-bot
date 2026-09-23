@@ -1,7 +1,7 @@
 # Direct dependencies only, pinned to versions confirmed to have prebuilt
-# wheels for Python 3.14 (Windows/macOS/Linux). Everything else (aiohttp,
-# numpy, multidict, etc.) is a transitive dependency and is left unpinned so
-# pip resolves whatever version is actually compatible with your interpreter,
+# wheels for Python 3.14 (Windows/macOS/Linux). Everything else (numpy,
+# multidict, etc.) is a transitive dependency and is left unpinned so pip
+# resolves whatever version is actually compatible with your interpreter,
 # instead of a full `pip freeze` snapshot going stale as Python moves forward.
 discord.py==2.7.1
 pandas==3.0.6
@@ -10,3 +10,4 @@ lxml==6.1.3
 python-dotenv==1.2.3
 colorama==0.4.6
 playwright==1.63.0
+aiohttp==3.14.3
