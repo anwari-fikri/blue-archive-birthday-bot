@@ -10,7 +10,7 @@ import discord
 import pandas as pd
 from discord.ext import commands, tasks
 from discord import app_commands
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 import logging
 
 # bot.py runs from the bot/ folder, which is what ends up on sys.path (same reason
@@ -165,7 +165,20 @@ class Birthday(commands.Cog):
         browser = await self._get_browser()
         page = await browser.new_page(user_agent=BROWSER_USER_AGENT)
         try:
-            await page.goto(url, wait_until="networkidle", timeout=30000)
+            try:
+                # "networkidle" is the strictest wait condition, and on some hosts
+                # (seen on a VPS, not locally) background requests (ads/analytics)
+                # never fully settle, so it can time out even though the page we
+                # actually need has long since finished loading. "load" only
+                # requires the page itself (plus its own resources) to finish,
+                # which is enough since this site's content is server-rendered,
+                # not filled in afterwards by JS.
+                await page.goto(url, wait_until="load", timeout=45000)
+            except PlaywrightTimeoutError:
+                # Even "load" can time out on a slow connection. The navigation
+                # has usually still completed by then, so fall back to whatever
+                # content is currently in the page rather than failing outright.
+                log.warning(f"Timed out waiting for {url} to finish loading, using current page content anyway")
             return await page.content()
         finally:
             await page.close()
