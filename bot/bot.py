@@ -4,6 +4,7 @@ from colorama import Back, Fore, Style
 import time
 import platform
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -61,7 +62,7 @@ def main():
             "(see README) before running the bot."
         )
     client = BlueArchiveBirthdayBot()
-    client.run(TOKEN)
+    client.run(TOKEN, log_level=logging.INFO)
 
 
 if __name__ == "__main__":

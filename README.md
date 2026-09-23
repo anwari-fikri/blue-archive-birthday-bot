@@ -22,6 +22,8 @@ To use the bot, simply type one of the commands in the chat or command prompt. T
 
 Data are retrieved from https://bluearchive.wiki/wiki/Characters_trivia_list. The wiki blocks plain HTTP requests, so the bot drives a real headless Chromium browser (via [Playwright](https://playwright.dev/python/)) to fetch pages, rather than a simple HTTP client.
 
+The first time the bot runs with no `data/characters.csv` file present, it scrapes the trivia table and every character's image once, then saves the result to that CSV. Every run after that just reads the CSV, no scraping needed. Some VPS providers' IPs get blocked or time out on the live scrape even when it works fine from a home connection, so if that happens to you, run the bot once somewhere it does work, then commit and push the `data/characters.csv` it creates, and pull that onto the VPS, it'll just read the local file from then on. To force a re-scrape later (e.g. after new characters are added to the wiki), use the owner-only `/refresh_character_cache` command.
+
 ### Running it yourself
 
 Requirements: Python 3.10+ (tested on 3.14).

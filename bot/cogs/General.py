@@ -21,7 +21,13 @@ class General(commands.Cog):
 
         embed.add_field(
             name="/toggle_birthday_reminder",
-            value="Toggle birthday reminders on or off.",
+            value="Toggle birthday reminders on or off for this channel.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="/get_today_birthday",
+            value="Get the character birthday(s) today.",
             inline=False,
         )
 
@@ -32,8 +38,20 @@ class General(commands.Cog):
         )
 
         embed.add_field(
-            name="/get_today_birthday",
-            value="Get the character birthday(s) today.",
+            name="/find_birthday_by_name",
+            value="Look up a specific character's birthday by name.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="/refresh_character_cache",
+            value="**(Owner only)** Re-scrape bluearchive.wiki and rebuild the local character cache.",
+            inline=False,
+        )
+
+        embed.add_field(
+            name="/list_channel_id_toggle",
+            value="**(Owner only)** List every channel ID subscribed to birthday reminders.",
             inline=False,
         )
 
